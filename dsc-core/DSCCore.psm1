@@ -18,7 +18,11 @@ function Start-DscCore {
 
         [Parameter(Mandatory = $true)]
         [System.String]
-        $ConfigFunction
+        $ConfigFunction,
+
+        [Parameter(Mandatory = $false)]
+        [Hashtable]
+        $ConfigData
     )
 
     # We disable progress stream output since that tends to mangle the
@@ -34,13 +38,13 @@ function Start-DscCore {
     # in that same context. This is mainly som that Powershell Modules imported
     # are discovered from the same PSModulePath. To do this we compile the mof
     # in a local Windows Powershell session.
-    $mof = Invoke-Command -ComputerName localhost -EnableNetworkAccess -ArgumentList $Path, $ConfigFunction {
-        param ($confPath, $func)
+    $mof = Invoke-Command -ComputerName localhost -EnableNetworkAccess -ArgumentList $Path, $ConfigFunction, $ConfigData {
+        param ($confPath, $func, $cdata)
         $global:WarningPreference = "SilentlyContinue"
         . $confPath
         $tempDir = Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName())
         New-Item -ItemType Directory -Path $tempDir | Out-Null
-        & $func -OutputPath $tempDir
+        & $func -ConfigurationData $cdata -OutputPath $tempDir
     }
 
     $configurationData = Get-Content $mof.FullName -AsByteStream -ReadCount 0
@@ -48,13 +52,21 @@ function Start-DscCore {
     $configurationData = $totalSize + $configurationData
 
     Write-Output "Applying DSC configuration for $Path ..."
-    Invoke-CimMethod    -ComputerName localhost `
-                        -Namespace "root/Microsoft/Windows/DesiredStateConfiguration" `
-                        -ClassName "MSFT_DSCLocalConfigurationManager" `
-                        -MethodName "SendConfigurationApply" `
-                        -Arguments @{ConfigurationData = $configurationData; Force = $true} `
-                        -ErrorAction Stop | Out-Null
+    Invoke-CimMethod    -ComputerName localhost -Namespace "root/Microsoft/Windows/DesiredStateConfiguration" -ClassName "MSFT_DSCLocalConfigurationManager" -MethodName "SendConfigurationApply" -Arguments @{ConfigurationData = $configurationData; Force = $true} -ErrorAction Stop
 
     $global:ProgressPreference = $currentProgPref
     Remove-Item $mof.Directory -Recurse -Force | Out-Null
+}
+
+
+[DSCLocalConfigurationManager()]
+configuration LCMConfig
+{
+    Node localhost
+    {
+        Settings
+        {
+            RefreshMode = 'Push'
+        }
+    }
 }
