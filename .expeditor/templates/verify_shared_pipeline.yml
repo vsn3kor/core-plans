@@ -5,3 +5,10 @@ steps:
     expeditor:
       executor:
         docker:
+
+  - label: "[@@plan@@] :habicat: Run pre-commit hooks"
+    command:
+      - bin/ci/check-pre-commit.sh @@plan@@
+    expeditor:
+      executor:
+        docker:
